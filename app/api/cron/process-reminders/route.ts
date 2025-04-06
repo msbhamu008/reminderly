@@ -7,6 +7,24 @@ export async function GET() {
   try {
     const supabase = createServerSupabaseClient()
 
+    // Check for any running instances of this job
+    const { data: runningJobs } = await supabase
+      .from("cron_job_logs")
+      .select()
+      .eq("job_type", "process_reminders")
+      .eq("status", "started")
+      .is("completed_at", null)
+
+    if (runningJobs && runningJobs.length > 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "A process_reminders job is already running" 
+        }, 
+        { status: 409 }
+      )
+    }
+
     // Enhanced log entry with more details
     const logEntry = {
       job_type: "process_reminders",
@@ -15,13 +33,16 @@ export async function GET() {
       executed_at: new Date().toISOString(),
       details: {
         environment: process.env.NODE_ENV,
-        version: "1.0.1", // Track version for debugging
+        version: "1.0.1",
         server_time: new Date().toISOString(),
       },
     }
 
     // Log the start of the job
-    const { data: logData, error: logError } = await supabase.from("cron_job_logs").insert(logEntry).select()
+    const { data: logData, error: logError } = await supabase
+      .from("cron_job_logs")
+      .insert(logEntry)
+      .select()
 
     if (logError) {
       console.error("Error logging cron job start:", logError)
@@ -33,8 +54,6 @@ export async function GET() {
     // Process reminders with better error handling
     try {
       const result = await processReminders()
-
-      // Calculate execution time
       const executionTimeMs = Date.now() - startTime
 
       // Update the log with detailed results

@@ -39,9 +39,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Job type is required" }, { status: 400 })
     }
 
-    // Log the manual trigger
     const supabase = createServerSupabaseClient()
 
+    // Check for any running jobs of the same type
+    const { data: runningJobs } = await supabase
+      .from("cron_job_logs")
+      .select()
+      .eq("job_type", jobType)
+      .eq("status", "started")
+      .is("completed_at", null)
+
+    if (runningJobs && runningJobs.length > 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `A ${jobType} job is already running. Please wait for it to complete.` 
+        }, 
+        { status: 409 }
+      )
+    }
+
+    // Log the manual trigger
     const { error: logError } = await supabase.from("cron_job_logs").insert({
       job_type: jobType,
       trigger_type: "manual",
